@@ -20,6 +20,19 @@
             $this->RegisterVariableString("MarketData", $this->Translate("Market Data"), "~TextBox", 0);
             $this->RegisterVariableFloat("CurrentPrice", $this->Translate("Current Price"), "Cent", 1);
 
+            $this->RegisterVariableFloat("MaximumPrice", $this->Translate("Maximum Price"), "Cent", 10);
+            $this->RegisterVariableFloat("MinimumPrice", $this->Translate("Minimum Price"), "Cent", 11);
+            $this->RegisterVariableFloat("AveragePrice", $this->Translate("Average Price"), "Cent", 12);
+
+            for($i = 0; $i < 24; $i++) {
+                $this->RegisterVariableFloat("Price_$i", $this->Translate("$i"), "Cent", 100+$i);
+            }
+
+            for($i = 0; $i < 24; $i++) {
+                $this->RegisterVariableString("Color_$i", $this->Translate("Color $i"), "~TextBox", 200+$i);
+            }
+
+
             $this->SetVisualizationType(1);
 
             // Load initially after 30 seconds
@@ -47,8 +60,9 @@
             $this->UpdateVisualizationValue($marketData);
             $this->SetValue("MarketData", $marketData);
 
+            // Calculate Current Price
             $currentTime = time();
-            $found = false;
+            $found       = false;
             foreach (json_decode($marketData) as $row) {
                 if ($currentTime >= $row->start && $currentTime <= $row->end) {
                     $this->SetValue("CurrentPrice", $row->price);
@@ -58,6 +72,43 @@
             }
             if (!$found) {
                 $this->SetValue("CurrentPrice", 999.99);
+            }
+
+            // Calculate Max,Min and Avg
+            $valueMax    = 0;
+            $valueMin    = 99999.99;
+            $valueAvg    = 0;
+            $count       = 0;
+            foreach (json_decode($marketData) as $row) {
+                $valueMax = max($valueMax, $row->price);
+                $valueMin = min($valueMin, $row->price);
+                $valueAvg = $valueAvg + $row->price;
+                $count++;
+            }
+            $valueAvg = $valueAvg / $count;
+            $this->SetValue("MinimumPrice", $valueMin);
+            $this->SetValue("MaximumPrice", $valueMax);
+            if ($count > 0) {
+                $this->SetValue("AveragePrice", $valueAvg);
+            } else {
+                $this->SetValue("AveragePrice", 0);
+            }
+
+            // Fill hourly Values
+            $count    = 0;
+            foreach (json_decode($marketData) as $row) {
+                $this->SendDebug("Update", "Process Price=$row->price, Count=$count", 0);
+                if ($count < 24) {
+                    $this->SetValue("Price_$count", $row->price);
+                    IPS_SetName($this->GetIDForIdent("Price_$count"), date('H',$row->start));
+
+                    if ($row->price > $valueAvg) {
+                        $this->SetValue("Color_$count", '247;116;106 --> 223;27;12');
+                    } else {
+                        $this->SetValue("Color_$count", '118;196;121 --> 59;137;63');
+                    }
+                }
+                $count++; 
             }
 
             // Synchronize to xx:00:30
